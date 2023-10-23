@@ -22,7 +22,7 @@ def createmailclient(email_address, password):
     return mailclient
 
 def checkmail(test=False):
-    #try:
+    try:
         mailclient=createmailclient(tlkrahid.tlkraemail, tlkrahid.tlkrapass)
         mailclient.select('INBOX')
         typ, messages = mailclient.search(None, 'ALL')
@@ -38,29 +38,33 @@ def checkmail(test=False):
             thismessage=quopri.decodestring(thismessage)
             thismessage=emailparser.parsebytes(thismessage)
             try: 
-                details=processmessage(thismessage)
+                details=processmessage(thismessage,mailclient)
                 if details==None:
                     continue
                 (alert, subject)=details
-                tweettext="#TRRiderAlert: "+subject+" | "+alert
+                tweettext="#TLKRiderAlert: "+subject+" | "+alert
                 print('got tweettext:',tweettext)
             except Exception as error:
                 print(f'An error occurred during message processing: {error}')
-            try: 
-                parts=getparts(tweettext)
-                if len(parts)==1:
-                    root_post_ref=models.create_strong_ref(bskyclient.send_post(text=tweettext))
-                elif len(parts)==2:
-                    root_post_ref=models.create_strong_ref(bskyclient.send_post(text=parts[0]))
-                    reply_to_ref0=models.create_strong_ref(bskyclient.send_post(text=parts[1],reply_to=models.AppBskyFeedPost.ReplyRef(parent=root_post_ref,root=root_post_ref)))
-                else:
-                    print('post too longgg, lenparts='+len(parts))
-            except Exception as error:
-                print(f'An error occurred during tweet posting: {error}')
+            parts=getparts(tweettext)
+            postloop(parts,False,False)
             mailclient.store(message, '+X-GM-LABELS', '\\Trash')
            
         mailclient.close()
         mailclient.logout()
+    except Exception as errortext:
+        print('couldnt check mail with error code',errortext)
+
+def postloop(parts, prevpost, parentpost):
+    if len(parts)==0: #end of loop
+        print('succesffuly posted tweet')
+        return
+    elif parentpost==False: #start of loop
+        firstpost=models.create_strong_ref(bskyclient.send_post(text=parts[0]))
+        postloop(parts[1:],firstpost,firstpost)
+    else: #midloop
+        postloop(parts[1:],models.create_strong_ref(bskyclient.send_post(text=parts[0],reply_to=models.AppBskyFeedPost.ReplyRef(parent=prevpost,root=parentpost))),parentpost)
+
 
 def getparts(text):
     parts=textwrap.wrap(text,width=275)
@@ -76,13 +80,17 @@ def getparts(text):
             ntweets-=1
     return parts
 
-def processmessage(message):
+def processmessage(message,mailclient):
     subject=message.get("Subject")
     sender=message.get("From")
     print('got subject:', subject)
     print('got sender:', sender)
     if not "donotreply@alerts.translink.ca" in sender: #skip non-alert emails
         print('not a real alert email')
+        return(None)
+    if "cancelled" in subject: #skip cancellation emails
+        print('cancellation email, deleting')
+        mailclient.store(message, '+X-GM-LABELS', '\\Trash')
         return(None)
     content=message.get_payload()[0].get_content()
     print(content)
