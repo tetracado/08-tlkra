@@ -38,17 +38,23 @@ def checkmail(test=False):
             thismessage=quopri.decodestring(thismessage)
             thismessage=emailparser.parsebytes(thismessage)
             try: 
-                details=processmessage(thismessage,mailclient)
+                details=processmessage(thismessage)
                 if details==None:
+                    print('got NONE as return for processmessage')
                     continue
+                elif details==False:
+                    mailclient.store(message, '+X-GM-LABELS', '\\Trash')    
+                    continue
+                print('got details',details)
                 (alert, subject)=details
                 tweettext="#TLKRiderAlert: "+subject+" | "+alert
                 print('got tweettext:',tweettext)
+                parts=getparts(tweettext)
+                postloop(parts,False,False)
+                mailclient.store(message, '+X-GM-LABELS', '\\Trash')
             except Exception as error:
                 print(f'An error occurred during message processing: {error}')
-            parts=getparts(tweettext)
-            postloop(parts,False,False)
-            mailclient.store(message, '+X-GM-LABELS', '\\Trash')
+
            
         mailclient.close()
         mailclient.logout()
@@ -80,7 +86,7 @@ def getparts(text):
             ntweets-=1
     return parts
 
-def processmessage(message,mailclient):
+def processmessage(message):
     subject=message.get("Subject")
     sender=message.get("From")
     print('got subject:', subject)
@@ -90,8 +96,7 @@ def processmessage(message,mailclient):
         return(None)
     if "cancelled" in subject: #skip cancellation emails
         print('cancellation email, deleting')
-        mailclient.store(message, '+X-GM-LABELS', '\\Trash')
-        return(None)
+        return(False)
     content=message.get_payload()[0].get_content()
     print(content)
     alert=re.findall("((.|\n)*)In Effect", content)[0][0]
@@ -121,7 +126,7 @@ bskyclient=Client()
 bskyclient.login('tlkalertrepeater.bsky.social', tlkrahid.apppass)
 print('logged in to bsky')
 
-#checkmail()
+checkmail()
 
 schedule.every(5).minutes.do(checkmail) 
 
