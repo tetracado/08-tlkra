@@ -99,7 +99,7 @@ def processmessage(message):
         return(False)
     content=message.get_payload()[0].get_content()
     print(content)
-    alert=re.findall("((.|\n)*)In Effect", content)[0][0]
+    alert=re.findall("((.|\n)*)In\sEffect", content)[0][0]
     print(type(alert))
     print(alert)
     alert=re.sub('\n',' ',alert)
