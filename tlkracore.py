@@ -2,7 +2,7 @@ from email.parser import BytesParser
 from email.policy import default
 import imaplib
 import quopri
-
+import typing as t
 import re
 import tlkrahid
 import tweepy
@@ -11,6 +11,39 @@ import textwrap
 import time
 from bs4 import BeautifulSoup
 from atproto import Client, models
+
+def extract_url_byte_positions(text: str, *, encoding: str = 'UTF-8') -> t.List[t.Tuple[str, int, int]]:
+    """This function will detect any links beginning with http or https."""
+    #https://github.com/MarshalX/atproto/blob/main/examples/advanced_usage/auto_hyperlinks.py
+    encoded_text = text.encode(encoding)
+
+    # Adjusted URL matching pattern
+    pattern = rb'https?://[^ \n\r\t]*'
+
+    matches = re.finditer(pattern, encoded_text)
+    url_byte_positions = []
+
+    for match in matches:
+        url_bytes = match.group(0)
+        url = url_bytes.decode(encoding)
+        url_byte_positions.append((url, match.start(), match.end()))
+
+    return url_byte_positions
+
+def injecturls(text: str):
+
+    url_positions = extract_url_byte_positions(text)
+    facets = []
+
+    for link_data in url_positions:
+        uri, byte_start, byte_end = link_data
+        facets.append(
+            models.AppBskyRichtextFacet.Main(
+                features=[models.AppBskyRichtextFacet.Link(uri=uri)],
+                index=models.AppBskyRichtextFacet.ByteSlice(byte_start=byte_start, byte_end=byte_end),
+            )
+        )
+    return facets
 
 def createmailclient(email_address, password):
     SMTP_SERVER="imap.gmail.com"
@@ -66,10 +99,10 @@ def postloop(parts, prevpost, parentpost):
         print('succesffuly posted tweet')
         return
     elif parentpost==False: #start of loop
-        firstpost=models.create_strong_ref(bskyclient.send_post(text=parts[0]))
+        firstpost=models.create_strong_ref(bskyclient.send_post(text=parts[0],facets=injecturls(parts[0])))
         postloop(parts[1:],firstpost,firstpost)
     else: #midloop
-        postloop(parts[1:],models.create_strong_ref(bskyclient.send_post(text=parts[0],reply_to=models.AppBskyFeedPost.ReplyRef(parent=prevpost,root=parentpost))),parentpost)
+        postloop(parts[1:],models.create_strong_ref(bskyclient.send_post(text=parts[0],facets=injecturls(parts[0]),reply_to=models.AppBskyFeedPost.ReplyRef(parent=prevpost,root=parentpost))),parentpost)
 
 
 def getparts(text):
