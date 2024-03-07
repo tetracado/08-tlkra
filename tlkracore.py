@@ -5,12 +5,10 @@ import quopri
 import typing as t
 import re
 import tlkrahid
-import tweepy
 import schedule
 import textwrap
 import time
-from bs4 import BeautifulSoup
-from atproto import Client, models
+from atproto import Client, models,client_utils
 
 def extract_url_byte_positions(text: str, *, encoding: str = 'UTF-8') -> t.List[t.Tuple[str, int, int]]:
     """This function will detect any links beginning with http or https."""
@@ -99,7 +97,8 @@ def postloop(parts, prevpost, parentpost):
         print('succesffuly posted tweet')
         return
     elif parentpost==False: #start of loop
-        firstpost=models.create_strong_ref(bskyclient.send_post(text=parts[0],facets=injecturls(parts[0])))
+        hashremove=parts[0][14:] #remove    {#TLKRiderAlert}
+        firstpost=models.create_strong_ref(bskyclient.send_post(text=client_utils.TextBuilder().tag('#TLKRiderAlert','TLKRiderAlert').text(hashremove),facets=injecturls(parts[0])))
         postloop(parts[1:],firstpost,firstpost)
     else: #midloop
         postloop(parts[1:],models.create_strong_ref(bskyclient.send_post(text=parts[0],facets=injecturls(parts[0]),reply_to=models.AppBskyFeedPost.ReplyRef(parent=prevpost,root=parentpost))),parentpost)
