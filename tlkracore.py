@@ -64,10 +64,18 @@ def checkmail(test=False):
             typ, thisemail = mailclient.fetch(message, '(RFC822)')
             typ, thisuid=mailclient.fetch(message, 'UID')
             print('uid:',thisuid)
-            thismessage=thisemail[0][1]
+            
+            testmessage=thisemail[0][1]
+            #print('thismessage',thismessage)
             emailparser=BytesParser(policy=default)
-            thismessage=quopri.decodestring(thismessage)
-            thismessage=emailparser.parsebytes(thismessage)
+
+            #fix quopri bullshit
+            qpmessage=quopri.decodestring(testmessage) #this one sometimes fucks up
+            thismessage=emailparser.parsebytes(qpmessage)
+            if thismessage.get("Subject")==None or thismessage.get("From")==None:
+                   print('FAILED QUOPRI DETECTED, MANUALLY AVOIDING QUOPRI')
+                   thismessage=emailparser.parsebytes(testmessage)
+            
             try: 
                 details=processmessage(thismessage)
                 if details==None:
@@ -81,7 +89,10 @@ def checkmail(test=False):
                 tweettext="#TLKRiderAlert: "+subject+" | "+alert
                 print('got tweettext:',tweettext)
                 parts=getparts(tweettext)
-                postloop(parts,False,False)
+                if len(parts)>5:
+                    print("FAILED PARTS TOO LONG MUST BE FAILED PARSE")
+                else:
+                    postloop(parts,False,False)
                 mailclient.store(message, '+X-GM-LABELS', '\\Trash')
             except Exception as error:
                 print(f'An error occurred during message processing: {error}')
@@ -97,6 +108,7 @@ def postloop(parts, prevpost, parentpost):
         print('succesffuly posted tweet')
         return
     elif parentpost==False: #start of loop
+        print('ready to post with parts',parts)
         hashremove=parts[0][14:] #remove    {#TLKRiderAlert}
         firstpost=models.create_strong_ref(bskyclient.send_post(text=client_utils.TextBuilder().tag('#TLKRiderAlert','TLKRiderAlert').text(hashremove),facets=injecturls(parts[0])))
         postloop(parts[1:],firstpost,firstpost)
@@ -119,6 +131,7 @@ def getparts(text):
     return parts
 
 def processmessage(message):
+    print('type message in processmkessage',type(message))
     subject=message.get("Subject")
     sender=message.get("From")
     print('got subject:', subject)
@@ -129,11 +142,21 @@ def processmessage(message):
     if "cancelled" in subject: #skip cancellation emails
         print('cancellation email, deleting')
         return(False)
-    content=message.get_payload()[0].get_content()
-    print(content)
-    alert=re.findall("((.|\n)*)In\sEffect", content)[0][0]
-    print(type(alert))
-    print(alert)
+    #print(message)
+    #print(type(message))
+    #print(message.items())
+    content=message.get_payload()
+    #print('unchecked content',content)
+    #print(type(content))
+    if type(content)!=type('pspp'): #not string 
+        content=content[0].get_content()
+    print('checked content',content)
+    try:
+        alert=re.findall("((.|\n)*)In\sEffect", content)[0][0] #for in effect, normal emails
+    except:
+        alert=re.findall("((.|\n)*)\nUpdated: ", content)[0][0] #for emails without "in effect" in them 
+    #print(type(alert))
+    #print('alert',alert)
     alert=re.sub('\n',' ',alert)
     #print('alert:',alert)
     return (alert, subject)
